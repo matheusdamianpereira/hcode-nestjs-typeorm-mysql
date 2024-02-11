@@ -5,9 +5,10 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
-import { User } from '@prisma/client';
+import { InjectRepository } from '@nestjs/typeorm';
 import * as bcrypt from 'bcrypt';
-import { PrismaService } from '../prisma/prisma.service';
+import { Repository } from 'typeorm';
+import { UserEntity } from '../user/entity/user.entity';
 import { UserService } from '../user/user.service';
 import { AuthRegisterDTO } from './dto/auth-register.dto';
 
@@ -18,12 +19,13 @@ export class AuthService {
 
   constructor(
     private readonly jwtService: JwtService,
-    private readonly prismaService: PrismaService,
     private readonly userService: UserService,
     private readonly mailerService: MailerService,
+    @InjectRepository(UserEntity)
+    private readonly usersRepository: Repository<UserEntity>,
   ) {}
 
-  async createToken(user: User) {
+  async createToken(user: UserEntity) {
     const accessToken = await this.jwtService.signAsync(
       {
         id: user.id,
@@ -64,10 +66,8 @@ export class AuthService {
   }
 
   async login(email: string, password: string) {
-    const user = await this.prismaService.user.findFirst({
-      where: {
-        email,
-      },
+    const user = await this.usersRepository.findOneBy({
+      email,
     });
 
     if (!user) {
@@ -84,10 +84,8 @@ export class AuthService {
   }
 
   async forget(email: string) {
-    const user = await this.prismaService.user.findFirst({
-      where: {
-        email,
-      },
+    const user = await this.usersRepository.findOneBy({
+      email,
     });
 
     if (!user) {
@@ -116,7 +114,7 @@ export class AuthService {
       },
     });
 
-    return true;
+    return { success: true };
   }
 
   async reset(password: string, token: string) {
@@ -133,14 +131,11 @@ export class AuthService {
       const salt = await bcrypt.genSalt();
       const hashedPassword = await bcrypt.hash(password, salt);
 
-      const user = await this.prismaService.user.update({
-        where: {
-          id: +data.id,
-        },
-        data: {
-          password: hashedPassword,
-        },
+      await this.usersRepository.update(+data.id, {
+        password: hashedPassword,
       });
+
+      const user = await this.userService.show(+data.id);
 
       return await this.createToken(user);
     } catch (err) {
@@ -149,6 +144,8 @@ export class AuthService {
   }
 
   async register(data: AuthRegisterDTO) {
+    delete data.role;
+
     const user = await this.userService.create(data);
 
     return await this.createToken(user);

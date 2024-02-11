@@ -16,11 +16,10 @@ import {
   FileInterceptor,
   FilesInterceptor,
 } from '@nestjs/platform-express';
-import { User as UserModel } from '@prisma/client';
-import { join } from 'path';
 import { User } from '../decorators/user.decorator';
 import { FileService } from '../file/file.service';
 import { AuthGuard } from '../guards/auth.guard';
+import { UserEntity } from '../user/entity/user.entity';
 import { AuthService } from './auth.service';
 import { AuthForgetDTO } from './dto/auth-forget.dto';
 import { AuthLoginDTO } from './dto/auth-login.dto';
@@ -56,17 +55,15 @@ export class AuthController {
 
   @UseGuards(AuthGuard)
   @Post('me')
-  async me(@User() user: Partial<UserModel>) {
-    return {
-      user,
-    };
+  async me(@User() user: UserEntity) {
+    return user;
   }
 
   @UseInterceptors(FileInterceptor('file'))
   @UseGuards(AuthGuard)
   @Post('photo')
   async uploadPhoto(
-    @User() user: Partial<UserModel>,
+    @User() user: UserEntity,
     @UploadedFile(
       new ParseFilePipe({
         validators: [
@@ -77,17 +74,10 @@ export class AuthController {
     )
     photo: Express.Multer.File,
   ) {
-    const path = join(
-      __dirname,
-      '..',
-      '..',
-      'storage',
-      'photos',
-      `photo-${user.id}.jpg`,
-    );
+    const fileName = `photo-${user.id}.jpg`;
 
     try {
-      await this.fileService.upload(photo, path);
+      await this.fileService.upload(photo, fileName);
     } catch (err) {
       throw new BadRequestException(err);
     }
